@@ -1,0 +1,30 @@
+name: Shift Left Security Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compilar o projeto (Maven)
+        run: mvn clean compile
+
+      - name: Executar Semgrep (Shift Left Security)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: semgrep.yml
+        # A pipeline falhará automaticamente se o Semgrep encontrar as vulnerabilidades (Severity: ERROR)

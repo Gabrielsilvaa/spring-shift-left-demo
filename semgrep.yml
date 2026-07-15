@@ -1,0 +1,32 @@
+rules:
+  - id: java-sql-injection-concatenation
+    patterns:
+      - pattern-either:
+          - pattern: |
+              String $SQL = "..." + $INPUT + "...";
+              ...
+              $JDBCTEMPLATE.query($SQL, ...);
+          - pattern: |
+              $JDBCTEMPLATE.query("..." + $INPUT + "...", ...);
+    message: "Possível SQL Injection detectado. Entradas concatenadas diretamente em consultas SQL. Utilize PreparedStatement ou JPA Repositories."
+    languages:
+      - java
+    severity: ERROR
+
+  - id: java-hardcoded-secret
+    patterns:
+      - pattern-either:
+          - pattern: $TYPE $NAME = "super-secret-...";
+          - pattern: public static final String SECRET_KEY = "...";
+    message: "Hardcoded secret detectado no código-fonte. Chaves e senhas nunca devem ser fixadas no código. Utilize variáveis de ambiente (@Value) ou Vault."
+    languages:
+      - java
+    severity: WARNING
+
+  - id: java-weak-crypto-md5
+    patterns:
+      - pattern: MessageDigest.getInstance("MD5");
+    message: "Uso de algoritmo criptográfico fraco (MD5). Este algoritmo é vulnerável a colisões. Para senhas, utilize BCrypt, Argon2 ou PBKDF2."
+    languages:
+      - java
+    severity: WARNING
