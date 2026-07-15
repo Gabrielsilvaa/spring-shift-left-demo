@@ -26,7 +26,7 @@ jobs:
             --title "🚀 Automação: Modificações na branch ${{ github.ref_name }}" \
             --body "A esteira do **Shift Left AI** está analisando este código..." || true
           
-          PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number -jq '.number')
+          PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number --jq '.number')
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
 
       - name: 🛠️ Instalar Semgrep e dependências
