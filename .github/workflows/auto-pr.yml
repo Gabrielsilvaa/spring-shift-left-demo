@@ -1,0 +1,26 @@
+name: Auto Create Pull Request
+
+on:
+  push:
+    branches-ignore:
+      - main # Roda em qualquer branch, exceto na main
+
+jobs:
+  auto-open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+
+      - name: 🚀 Criar PR Automático
+        env:
+          # Usamos o SEU token para enganar o GitHub e disparar a esteira da IA
+          GH_TOKEN: ${{ secrets.MEU_PAT_AUTOMACAO }}
+        run: |
+          # Tenta criar o PR usando o GitHub CLI. 
+          # Se o PR já existir para esta branch, ele simplesmente ignora e segue em frente.
+          gh pr create \
+            --base main \
+            --head ${{ github.ref_name }} \
+            --title "🚀 Automação: Modificações na branch ${{ github.ref_name }}" \
+            --body "Pull Request aberto automaticamente após o \`git push\`. A esteira do **Shift Left AI** já foi acionada para auditar este código." || true
