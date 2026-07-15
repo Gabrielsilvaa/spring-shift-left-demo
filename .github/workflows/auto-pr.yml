@@ -3,14 +3,14 @@ name: Auto Create Pull Request
 on:
   push:
     branches-ignore:
-      - main # Roda em qualquer branch que você der push, exceto na main
+      - main
 
 jobs:
   sast-ai-review:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Necessário para ler o código
-      pull-requests: write # Necessário para criar o PR e fazer o comentário
+      contents: write
+      pull-requests: write
 
     steps:
       - name: 📥 Checkout do código
@@ -18,16 +18,14 @@ jobs:
 
       - name: 🚀 Criar Pull Request Automático
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Usamos o token nativo e seguro do GitHub
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Cria o PR (se der erro porque já existe, ele ignora e segue em frente)
           gh pr create \
             --base main \
             --head ${{ github.ref_name }} \
             --title "🚀 Automação: Modificações na branch ${{ github.ref_name }}" \
             --body "A esteira do **Shift Left AI** está analisando este código..." || true
           
-          # Descobre o número do PR desta branch e salva em uma variável de ambiente
           PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number -jq '.number')
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
 
@@ -37,35 +35,71 @@ jobs:
           pip install semgrep
           sudo apt-get install jq -y
 
-      - name: 🧠 Instalar e Iniciar Ollama (Motor de IA)
+      - name: 🧠 Instalar e Iniciar Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
           sleep 5
-          echo "Baixando o modelo gemma2 (Isso pode levar alguns minutos)..."
-          ollama pull gemma2
+          echo "Baixando o modelo gemma2:2b (versão otimizada para CI/CD)..."
+          ollama pull gemma2:2b
 
-      - name: 🕵️ Executar Scan Inteligente
+      - name: 🕵️ Executar Scan SAST e IA (Independente)
         run: |
-          chmod +x scan-inteligente.sh
-          ./scan-inteligente.sh
+          echo "Iniciando varredura SAST local com Semgrep e processamento LLM..."
+          
+          semgrep scan --config semgrep.yml --json 2>/dev/null | \
+          jq -r '.results[] | "File: \(.path) | Line: \(.start.line) | Issue: \(.extra.message)"' | \
+          ollama run gemma2:2b "Voce e um Arquiteto de Seguranca Senior. O texto a seguir e um relatorio cru de SAST. Escreva uma 'Ordem de Servico' detalhada, rica e profissional em Markdown (.md) para um Agente de IA na IDE ler e consertar o codigo.
+
+          REGRAS ABSOLUTAS:
+          1. ZERO acentos graficos (nao use til, cedilha, acentos agudos).
+          2. NENHUM codigo ANSI. Apenas texto e sintaxe Markdown limpa.
+          3. Seja descritivo, tecnico e mandatorio.
+          4. Va direto ao ponto, NAO crie textos de introducao ou conclusao fora do escopo.
+
+          ESTRUTURA EXIGIDA:
+          # ORDEM DE SERVICO: REMEDIACAO SAST
+
+          Para cada falha encontrada, crie um bloco estruturado exatamente assim:
+
+          ## Arquivo: [Nome do arquivo]
+          - **Linha:** [Linha]
+          - **Problema Detectado:** [Descreva a vulnerabilidade baseado no Issue recebido]
+          - **Instrucao Tecnica para a IA:** [Instrucao direta usando o framework Spring]
+
+          Aqui esta o log SAST bruto para voce analisar e transformar: " | \
+          sed $'s/\033\\[[0-9;]*[a-zA-Z]//g' > INSTRUCOES_IDE.md
+          
+          echo "Relatório gerado com sucesso!"
 
       - name: 💬 Comentar Relatório da IA no Pull Request
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ env.PR_NUMBER }}
         with:
           script: |
             const fs = require('fs');
             
-            // Pega o número do PR que foi descoberto no passo anterior
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            if (!prNumber) {
+              console.log("⚠️ Número do PR não encontrado. Ignorando comentário.");
+              return;
+            }
             
-            // Lê o arquivo Markdown gerado pela IA
+            if (!fs.existsSync('INSTRUCOES_IDE.md')) {
+              console.log("⚠️ Arquivo INSTRUCOES_IDE.md não foi encontrado.");
+              return;
+            }
+
             const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
+            if (report.trim() === '') {
+              console.log("⚠️ Relatório gerado vazio. O Ollama pode ter travado.");
+              return;
+            }
             
             const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
             
-            // Posta o comentário usando o número exato do PR
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: prNumber,
               owner: context.repo.owner,
               repo: context.repo.repo,
