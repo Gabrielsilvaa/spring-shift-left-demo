@@ -25,9 +25,13 @@ jobs:
             --head ${{ github.ref_name }} \
             --title "🚀 Automacao: Modificacoes na branch ${{ github.ref_name }}" \
             --body "A esteira do **Shift Left AI** esta analisando este codigo..." || true
-          
-          PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number --jq '.number')
+           
+          PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number --jq '.number' 2>/dev/null || echo "")
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(gh pr list --head ${{ github.ref_name }} --base master --json number --jq '.[0].number' 2>/dev/null || echo "")
+          fi
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+          echo "DEBUG: PR_NUMBER = $PR_NUMBER"
 
       - name: 🛠️ Instalar Semgrep e dependencias
         run: |
@@ -79,11 +83,12 @@ jobs:
           fi
 
       - name: 🔒 Validar Seguranca (Bloquear Merge)
+        if: always()
         run: |
-          if [ -s falhas.txt ]; then
-            echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
-            exit 1
-          fi
+         if [ -s falhas.txt ]; then
+           echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
+           exit 1
+         fi
 
       - name: 💬 Comentar Relatorio da IA no Pull Request
         uses: actions/github-script@v7
@@ -91,21 +96,42 @@ jobs:
           PR_NUMBER: ${{ env.PR_NUMBER }}
         with:
           script: |
-            const fs = require('fs');
-            const prNumber = parseInt(process.env.PR_NUMBER, 10);
-            if (!prNumber || !fs.existsSync('INSTRUCOES_IDE.md')) return;
+           const fs = require('fs');
+           const prNumber = parseInt(process.env.PR_NUMBER, 10);
             
-            const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
+           // Log para debug
+           console.log("DEBUG: PR_NUMBER recebido =", process.env.PR_NUMBER);
+           console.log("DEBUG: PR_NUMBER parsed =", prNumber);
+           console.log("DEBUG: Arquivo INSTRUCOES_IDE.md existe?", fs.existsSync('INSTRUCOES_IDE.md'));
             
-            // Log para aparecer na tela do GitHub Actions durante a demo
-            console.log("--- CONTEUDO DO RELATORIO QUE SERA POSTADO ---");
-            console.log(report);
-            console.log("----------------------------------------------");
+           if (!prNumber || isNaN(prNumber)) {
+             console.log("ERRO: PR_NUMBER inválido ou não definido");
+             return;
+           }
             
-            const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
-            await github.rest.issues.createComment({
-              issue_number: prNumber,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: finalComment
-            });
+           if (!fs.existsSync('INSTRUCOES_IDE.md')) {
+             console.log("AVISO: Arquivo INSTRUCOES_IDE.md não encontrado");
+             return;
+           }
+            
+           const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
+            
+           // Log para aparecer na tela do GitHub Actions durante a demo
+           console.log("--- CONTEUDO DO RELATORIO QUE SERA POSTADO ---");
+           console.log(report);
+           console.log("----------------------------------------------");
+            
+           const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
+            
+           try {
+             await github.rest.issues.createComment({
+               issue_number: prNumber,
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               body: finalComment
+             });
+             console.log("✅ Comentário postado com sucesso no PR #" + prNumber);
+           } catch (error) {
+             console.log("❌ ERRO ao postar comentário:", error.message);
+             throw error;
+           }
