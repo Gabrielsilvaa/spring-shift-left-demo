@@ -82,15 +82,8 @@ jobs:
             cat INSTRUCOES_IDE.md
           fi
 
-      - name: 🔒 Validar Seguranca (Bloquear Merge)
-        if: always()
-        run: |
-         if [ -s falhas.txt ]; then
-           echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
-           exit 1
-         fi
-
       - name: 💬 Comentar Relatorio da IA no Pull Request
+        if: always()
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ env.PR_NUMBER }}
@@ -98,31 +91,31 @@ jobs:
           script: |
            const fs = require('fs');
            const prNumber = parseInt(process.env.PR_NUMBER, 10);
-            
+             
            // Log para debug
            console.log("DEBUG: PR_NUMBER recebido =", process.env.PR_NUMBER);
            console.log("DEBUG: PR_NUMBER parsed =", prNumber);
            console.log("DEBUG: Arquivo INSTRUCOES_IDE.md existe?", fs.existsSync('INSTRUCOES_IDE.md'));
-            
+             
            if (!prNumber || isNaN(prNumber)) {
              console.log("ERRO: PR_NUMBER inválido ou não definido");
              return;
            }
-            
+             
            if (!fs.existsSync('INSTRUCOES_IDE.md')) {
              console.log("AVISO: Arquivo INSTRUCOES_IDE.md não encontrado");
              return;
            }
-            
+             
            const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
-            
+             
            // Log para aparecer na tela do GitHub Actions durante a demo
            console.log("--- CONTEUDO DO RELATORIO QUE SERA POSTADO ---");
            console.log(report);
            console.log("----------------------------------------------");
-            
+             
            const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
-            
+             
            try {
              await github.rest.issues.createComment({
                issue_number: prNumber,
@@ -134,4 +127,13 @@ jobs:
            } catch (error) {
              console.log("❌ ERRO ao postar comentário:", error.message);
              throw error;
+           }
+
+      - name: 🔒 Validar Seguranca (Bloquear Merge)
+        if: always()
+        run: |
+         if [ -s falhas.txt ]; then
+           echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
+           exit 1
+         fi
            }
