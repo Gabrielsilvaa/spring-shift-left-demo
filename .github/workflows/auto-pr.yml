@@ -42,20 +42,25 @@ jobs:
           export OLLAMA_MAX_LOADED_MODELS=1
           ollama serve > ollama.log 2>&1 &
           sleep 10
-          echo "Baixando o modelo tinyllama (versao ultraleve para CI/CD)..."
+          echo "Baixando o modelo tinyllama..."
           ollama pull tinyllama
 
       - name: 🕵️ Executar Scan SAST e IA (Independente)
         run: |
-          echo "Iniciando varredura SAST..."
+          echo "--- PASSO 1: Rodando Semgrep ---"
           semgrep scan --config semgrep.yml --json > semgrep-raw.json || true
           cat semgrep-raw.json | jq -r '.results[] | "File: \(.path) | Line: \(.start.line) | Issue: \(.extra.message)"' > falhas.txt
           
+          echo "--- LOG DE FALHAS DETECTADAS ---"
+          cat falhas.txt
+          
           if [ ! -s falhas.txt ]; then
+            echo "Nenhuma falha encontrada."
             echo "# 🎉 Shift Left: Analise Concluida" > INSTRUCOES_IDE.md
             echo "O SAST analisou o codigo e **nao possui vulnerabilidade**." >> INSTRUCOES_IDE.md
           else
-            cat falhas.txt | ollama run tinyllama "Voce e um Arquiteto de Seguranca Senior. Escreva uma 'Ordem de Servico' tecnica em Markdown para um Agente de IA.
+            echo "--- PASSO 2: IA Gerando Remediacao ---"
+            cat falhas.txt | ollama run tinyllama "Voce e um Arquiteto de Seguranca Senior. Escreva uma 'Ordem de Servico' tecnica em Markdown para um Agente de IA na IDE.
             REGRAS ABSOLUTAS:
             1. ZERO acentos graficos.
             2. NENHUM codigo ANSI. 
@@ -66,7 +71,11 @@ jobs:
             - **Linha:** [Linha]
             - **Problema:** [Descricao]
             - **Instrucao:** [Correcao]" > raw_llm_output.txt
+          
             cat raw_llm_output.txt | sed $'s/\033\\[[0-9;]*[a-zA-Z]//g' > INSTRUCOES_IDE.md
+          
+            echo "--- LOG DO RELATORIO GERADO PELA IA ---"
+            cat INSTRUCOES_IDE.md
           fi
 
       - name: 🔒 Validar Seguranca (Bloquear Merge)
