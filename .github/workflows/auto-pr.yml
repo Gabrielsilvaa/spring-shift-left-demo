@@ -25,7 +25,7 @@ jobs:
             --head ${{ github.ref_name }} \
             --title "🚀 Automacao: Modificacoes na branch ${{ github.ref_name }}" \
             --body "A esteira do **Shift Left AI** esta analisando este codigo..." || true
-           
+          
           PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number --jq '.number' 2>/dev/null || echo "")
           if [ -z "$PR_NUMBER" ]; then
             PR_NUMBER=$(gh pr list --head ${{ github.ref_name }} --base master --json number --jq '.[0].number' 2>/dev/null || echo "")
@@ -64,17 +64,25 @@ jobs:
             echo "O SAST analisou o codigo e **nao possui vulnerabilidade**." >> INSTRUCOES_IDE.md
           else
             echo "--- PASSO 2: IA Gerando Remediacao ---"
-            cat falhas.txt | ollama run tinyllama "Voce e um Arquiteto de Seguranca Senior. Escreva uma 'Ordem de Servico' tecnica em Markdown para um Agente de IA na IDE.
+            cat falhas.txt | ollama run tinyllama "Voce e um Arquiteto de Seguranca Senior. O texto a seguir e um relatorio cru de SAST. Escreva uma 'Ordem de Servico' detalhada, rica e profissional em Markdown (.md) para um Agente de IA na IDE ler e consertar o codigo.
+
             REGRAS ABSOLUTAS:
-            1. ZERO acentos graficos.
-            2. NENHUM codigo ANSI. 
-            3. Seja tecnico e mandatorio.
-            ESTRUTURA:
+            1. ZERO acentos graficos (nao use til, cedilha, acentos agudos).
+            2. NENHUM codigo ANSI. Apenas texto e sintaxe Markdown limpa.
+            3. Seja descritivo, tecnico e mandatorio.
+            4. Va direto ao ponto, NAO crie textos de introducao ou conclusao fora do escopo.
+
+            ESTRUTURA EXIGIDA:
             # ORDEM DE SERVICO: REMEDIACAO SAST
-            ## Arquivo: [Nome]
+
+            Para cada falha encontrada, crie um bloco estruturado exatamente assim:
+
+            ## Arquivo: [Nome do arquivo]
             - **Linha:** [Linha]
-            - **Problema:** [Descricao]
-            - **Instrucao:** [Correcao]" > raw_llm_output.txt
+            - **Problema Detectado:** [Descreva a vulnerabilidade baseado no Issue recebido]
+            - **Instrucao Tecnica para a IA:** [Instrucao direta usando o framework Spring]
+
+            Aqui esta o log SAST bruto para voce analisar e transformar: " > raw_llm_output.txt
           
             cat raw_llm_output.txt | sed $'s/\033\\[[0-9;]*[a-zA-Z]//g' > INSTRUCOES_IDE.md
           
@@ -89,51 +97,50 @@ jobs:
           PR_NUMBER: ${{ env.PR_NUMBER }}
         with:
           script: |
-           const fs = require('fs');
-           const prNumber = parseInt(process.env.PR_NUMBER, 10);
-             
-           // Log para debug
-           console.log("DEBUG: PR_NUMBER recebido =", process.env.PR_NUMBER);
-           console.log("DEBUG: PR_NUMBER parsed =", prNumber);
-           console.log("DEBUG: Arquivo INSTRUCOES_IDE.md existe?", fs.existsSync('INSTRUCOES_IDE.md'));
-             
-           if (!prNumber || isNaN(prNumber)) {
-             console.log("ERRO: PR_NUMBER inválido ou não definido");
-             return;
-           }
-             
-           if (!fs.existsSync('INSTRUCOES_IDE.md')) {
-             console.log("AVISO: Arquivo INSTRUCOES_IDE.md não encontrado");
-             return;
-           }
-             
-           const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
-             
-           // Log para aparecer na tela do GitHub Actions durante a demo
-           console.log("--- CONTEUDO DO RELATORIO QUE SERA POSTADO ---");
-           console.log(report);
-           console.log("----------------------------------------------");
-             
-           const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
-             
-           try {
-             await github.rest.issues.createComment({
-               issue_number: prNumber,
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               body: finalComment
-             });
-             console.log("✅ Comentário postado com sucesso no PR #" + prNumber);
-           } catch (error) {
-             console.log("❌ ERRO ao postar comentário:", error.message);
-             throw error;
-           }
+            const fs = require('fs');
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            
+            // Log para debug
+            console.log("DEBUG: PR_NUMBER recebido =", process.env.PR_NUMBER);
+            console.log("DEBUG: PR_NUMBER parsed =", prNumber);
+            console.log("DEBUG: Arquivo INSTRUCOES_IDE.md existe?", fs.existsSync('INSTRUCOES_IDE.md'));
+            
+            if (!prNumber || isNaN(prNumber)) {
+              console.log("ERRO: PR_NUMBER inválido ou não definido");
+              return;
+            }
+            
+            if (!fs.existsSync('INSTRUCOES_IDE.md')) {
+              console.log("AVISO: Arquivo INSTRUCOES_IDE.md não encontrado");
+              return;
+            }
+            
+            const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
+            
+            // Log para aparecer na tela do GitHub Actions durante a demo
+            console.log("--- CONTEUDO DO RELATORIO QUE SERA POSTADO ---");
+            console.log(report);
+            console.log("----------------------------------------------");
+            
+            const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
+            
+            try {
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: finalComment
+              });
+              console.log("✅ Comentário postado com sucesso no PR #" + prNumber);
+            } catch (error) {
+              console.log("❌ ERRO ao postar comentário:", error.message);
+              throw error;
+            }
 
       - name: 🔒 Validar Seguranca (Bloquear Merge)
         if: always()
         run: |
-         if [ -s falhas.txt ]; then
-           echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
-           exit 1
-         fi
-           }
+          if [ -s falhas.txt ]; then
+            echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
+            exit 1
+          fi
