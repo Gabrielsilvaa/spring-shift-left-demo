@@ -35,17 +35,19 @@ jobs:
           pip install semgrep
           sudo apt-get install jq -y
 
-      - name: 🧠 Instalar e Iniciar Ollama
+      - name: 🧠 Instalar e Iniciar Ollama (Modo Otimizado)
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
-          sleep 5
-          echo "Baixando o modelo gemma2:2b..."
-          ollama pull gemma2:2b
+          export OLLAMA_NUM_PARALLEL=1
+          export OLLAMA_MAX_LOADED_MODELS=1
+          ollama serve > ollama.log 2>&1 &
+          sleep 10
+          echo "Baixando o modelo tinyllama (versao ultraleve para CI/CD)..."
+          ollama pull tinyllama
 
       - name: 🕵️ Executar Scan SAST e IA (Independente)
         run: |
-          echo "Iniciando varredura SAST local com Semgrep..."
+          echo "Iniciando varredura SAST..."
           semgrep scan --config semgrep.yml --json > semgrep-raw.json || true
           cat semgrep-raw.json | jq -r '.results[] | "File: \(.path) | Line: \(.start.line) | Issue: \(.extra.message)"' > falhas.txt
           
@@ -53,7 +55,7 @@ jobs:
             echo "# 🎉 Shift Left: Analise Concluida" > INSTRUCOES_IDE.md
             echo "O SAST analisou o codigo e **nao possui vulnerabilidade**." >> INSTRUCOES_IDE.md
           else
-            cat falhas.txt | ollama run gemma2:2b "Voce e um Arquiteto de Seguranca Senior. Escreva uma 'Ordem de Servico' técnica em Markdown para um Agente de IA na IDE.
+            cat falhas.txt | ollama run tinyllama "Voce e um Arquiteto de Seguranca Senior. Escreva uma 'Ordem de Servico' tecnica em Markdown para um Agente de IA.
             REGRAS ABSOLUTAS:
             1. ZERO acentos graficos.
             2. NENHUM codigo ANSI. 
