@@ -1,4 +1,4 @@
-name: Auto Create Pull Request
+name: Auto-PR & Shift Left AI Security
 
 on:
   push:
@@ -94,7 +94,14 @@ jobs:
             const fs = require('fs');
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             if (!prNumber || !fs.existsSync('INSTRUCOES_IDE.md')) return;
+            
             const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
+            
+            // Log para aparecer na tela do GitHub Actions durante a demo
+            console.log("--- CONTEUDO DO RELATORIO QUE SERA POSTADO ---");
+            console.log(report);
+            console.log("----------------------------------------------");
+            
             const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
             await github.rest.issues.createComment({
               issue_number: prNumber,
