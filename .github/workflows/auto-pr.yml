@@ -3,7 +3,7 @@ name: Auto Create Pull Request
 on:
   push:
     branches-ignore:
-      - master # Configurado para a branch master
+      - master
 
 jobs:
   sast-ai-review:
@@ -23,14 +23,13 @@ jobs:
           gh pr create \
             --base master \
             --head ${{ github.ref_name }} \
-            --title "🚀 Automação: Modificações na branch ${{ github.ref_name }}" \
-            --body "A esteira do **Shift Left AI** está analisando este código..." || true
+            --title "🚀 Automacao: Modificacoes na branch ${{ github.ref_name }}" \
+            --body "A esteira do **Shift Left AI** esta analisando este codigo..." || true
           
-          # Utilizando a flag correta --jq
           PR_NUMBER=$(gh pr view ${{ github.ref_name }} --json number --jq '.number')
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
 
-      - name: 🛠️ Instalar Semgrep e dependências
+      - name: 🛠️ Instalar Semgrep e dependencias
         run: |
           python -m pip install --upgrade pip
           pip install semgrep
@@ -41,86 +40,51 @@ jobs:
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
           sleep 5
-          echo "Baixando o modelo gemma2:2b (versão otimizada para CI/CD)..."
+          echo "Baixando o modelo gemma2:2b..."
           ollama pull gemma2:2b
 
       - name: 🕵️ Executar Scan SAST e IA (Independente)
         run: |
           echo "Iniciando varredura SAST local com Semgrep..."
-          
-          # 1. Roda o Semgrep e salva o JSON em um arquivo
           semgrep scan --config semgrep.yml --json > semgrep-raw.json || true
-          
-          # 2. Extrai apenas os dados importantes
           cat semgrep-raw.json | jq -r '.results[] | "File: \(.path) | Line: \(.start.line) | Issue: \(.extra.message)"' > falhas.txt
           
-          echo "--- LOG 1: FALHAS ENCONTRADAS PELO SEMGREP ---"
-          cat falhas.txt
-          echo "----------------------------------------------"
-          
-          # 3. Valida se existem falhas e gera a mensagem caso não ache nada
           if [ ! -s falhas.txt ]; then
-            echo "Nenhuma falha encontrada no código! Gerando relatório de sucesso."
             echo "# 🎉 Shift Left: Analise Concluida" > INSTRUCOES_IDE.md
-            echo "O SAST (Semgrep) analisou o codigo e **nao possui vulnerabilidade**." >> INSTRUCOES_IDE.md
-            echo "Excelente trabalho! O codigo esta seguro para o merge." >> INSTRUCOES_IDE.md
+            echo "O SAST analisou o codigo e **nao possui vulnerabilidade**." >> INSTRUCOES_IDE.md
           else
-            echo "Falhas encontradas. Acionando a IA..."
-          
-            # 4. Aciona o LLM
-            cat falhas.txt | ollama run gemma2:2b "Voce e um Arquiteto de Seguranca Senior. O texto a seguir e um relatorio cru de SAST. Escreva uma 'Ordem de Servico' detalhada, rica e profissional em Markdown (.md) para um Agente de IA na IDE ler e consertar o codigo.
-
+            cat falhas.txt | ollama run gemma2:2b "Voce e um Arquiteto de Seguranca Senior. Escreva uma 'Ordem de Servico' técnica em Markdown para um Agente de IA na IDE.
             REGRAS ABSOLUTAS:
-            1. ZERO acentos graficos (nao use til, cedilha, acentos agudos).
-            2. NENHUM codigo ANSI. Apenas texto e sintaxe Markdown limpa.
-            3. Seja descritivo, tecnico e mandatorio.
-            4. Va direto ao ponto, NAO crie textos de introducao ou conclusao fora do escopo.
-
-            ESTRUTURA EXIGIDA:
+            1. ZERO acentos graficos.
+            2. NENHUM codigo ANSI. 
+            3. Seja tecnico e mandatorio.
+            ESTRUTURA:
             # ORDEM DE SERVICO: REMEDIACAO SAST
-
-            Para cada falha encontrada, crie um bloco estruturado exatamente assim:
-
-            ## Arquivo: [Nome do arquivo]
+            ## Arquivo: [Nome]
             - **Linha:** [Linha]
-            - **Problema Detectado:** [Descreva a vulnerabilidade baseada no log]
-            - **Instrucao Tecnica para a IA:** [Instrucao direta usando o framework Spring]" > raw_llm_output.txt
-
-            # 5. Limpa os caracteres de terminal
+            - **Problema:** [Descricao]
+            - **Instrucao:** [Correcao]" > raw_llm_output.txt
             cat raw_llm_output.txt | sed $'s/\033\\[[0-9;]*[a-zA-Z]//g' > INSTRUCOES_IDE.md
           fi
-          
-          echo "--- LOG 2: ARQUIVO MARKDOWN FINAL GERADO ---"
-          cat INSTRUCOES_IDE.md
-          echo "--------------------------------------------"
 
-      - name: 💬 Comentar Relatório da IA no Pull Request
+      - name: 🔒 Validar Seguranca (Bloquear Merge)
+        run: |
+          if [ -s falhas.txt ]; then
+            echo "::error::Vulnerabilidades detectadas! Bloqueando o merge."
+            exit 1
+          fi
+
+      - name: 💬 Comentar Relatorio da IA no Pull Request
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ env.PR_NUMBER }}
         with:
           script: |
             const fs = require('fs');
-            
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
-            if (!prNumber) {
-              console.log("⚠️ Número do PR não encontrado. Ignorando comentário.");
-              return;
-            }
-            
-            if (!fs.existsSync('INSTRUCOES_IDE.md')) {
-              console.log("⚠️ Arquivo INSTRUCOES_IDE.md não foi encontrado.");
-              return;
-            }
-
+            if (!prNumber || !fs.existsSync('INSTRUCOES_IDE.md')) return;
             const report = fs.readFileSync('INSTRUCOES_IDE.md', 'utf8');
-            if (report.trim() === '') {
-              console.log("⚠️ Relatório gerado vazio. O Ollama pode ter travado.");
-              return;
-            }
-            
             const finalComment = `🤖 **Shift Left AI Agent** analisou este PR:\n\n${report}`;
-            
             await github.rest.issues.createComment({
               issue_number: prNumber,
               owner: context.repo.owner,
